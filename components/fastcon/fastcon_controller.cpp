@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "fastcon_controller.h"
 #include "esphome/core/log.h"
 #include "esphome/components/light/light_state.h"
