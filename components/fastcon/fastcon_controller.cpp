@@ -1,4 +1,3 @@
-#include <algorithm>
 #include "fastcon_controller.h"
 #include "esphome/core/log.h"
 #include "esphome/components/light/light_state.h"
@@ -113,7 +112,7 @@ std::vector<uint8_t> FastconController::generate_command(uint8_t n, uint32_t lig
 
 // --- Data Helpers: Converting ESPHome State to Fastcon Bytes ---
 
-static inline uint8_t to8(float v) { return static_cast<uint8_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f); }
+static inline uint8_t to8(float v) { return static_cast<uint8_t>(esphome::clamp(v, 0.0f, 1.0f) * 255.0f); }
 
 std::vector<uint8_t> FastconController::get_light_data(light::LightState *state) {
     auto values = state->current_values;
