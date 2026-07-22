@@ -10,11 +10,35 @@ static const char *const TAG = "fastcon.controller";
 
 void FastconController::setup() {
     ESP_LOGCONFIG(TAG, "Fastcon Controller: High-Frequency Burst Mode Active");
+    // DIAGNOSTIC: register via the shared dispatcher so esp32_ble_server's own
+    // GAP callback registration is untouched - see header comment.
+    esp32_ble::global_ble->register_gap_event_handler(this);
+}
+
+void FastconController::gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param) {
+    uint32_t now = micros();
+    switch (event) {
+        case ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT:
+            ESP_LOGD(TAG, "[GAP] ADV_DATA_RAW_SET_COMPLETE_EVT at %u us (%u us since start_advertising_ call)",
+                     now, now - this->last_start_call_us_);
+            break;
+        case ESP_GAP_BLE_ADV_START_COMPLETE_EVT:
+            ESP_LOGD(TAG, "[GAP] ADV_START_COMPLETE_EVT at %u us (%u us since start_advertising_ call)",
+                     now, now - this->last_start_call_us_);
+            break;
+        case ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT:
+            ESP_LOGD(TAG, "[GAP] ADV_STOP_COMPLETE_EVT at %u us (%u us since stop_advertising_ call)",
+                     now, now - this->last_stop_call_us_);
+            break;
+        default:
+            break;
+    }
 }
 
 // --- High Performance Queue Logic ---
 
 void FastconController::single_control(uint32_t light_id, const std::vector<uint8_t> &light_data) {
+    ESP_LOGD(TAG, "[CALL] single_control() entry at %u us for light_id=%u", micros(), (unsigned) light_id);
     std::vector<uint8_t> result_data(12);
     // Protocol header for single light control
     result_data[0] = 2 | (((0x0FFFFFF & (light_data.size() + 1)) << 4));
@@ -47,6 +71,8 @@ void FastconController::loop() {
         case AdvertiseState::IDLE: {
             std::lock_guard<std::mutex> lock(this->queue_mutex_);
             if (!this->queue_.empty()) {
+                ESP_LOGD(TAG, "[STATE] IDLE -> ADVERTISING at %u us, queue_size=%u, retries=0",
+                         micros(), (unsigned) this->queue_.size());
                 this->adv_state_ = AdvertiseState::ADVERTISING;
                 this->state_start_time_ = now;
                 this->start_advertising_(this->queue_.front().data);
@@ -55,6 +81,7 @@ void FastconController::loop() {
         }
         case AdvertiseState::ADVERTISING: {
             if (now - this->state_start_time_ >= this->adv_duration_) {
+                ESP_LOGD(TAG, "[STATE] ADVERTISING -> GAP at %u us", micros());
                 this->stop_advertising_();
                 this->adv_state_ = AdvertiseState::GAP;
                 this->state_start_time_ = now;
@@ -68,9 +95,13 @@ void FastconController::loop() {
                     auto &cmd = this->queue_.front();
                     cmd.retries++;
                     if (cmd.retries >= Command::MAX_RETRIES) {
+                        ESP_LOGD(TAG, "[STATE] GAP -> IDLE at %u us, retries exhausted (%u/%u), popping command",
+                                 micros(), cmd.retries, (unsigned) Command::MAX_RETRIES);
                         this->queue_.pop();
                         this->adv_state_ = AdvertiseState::IDLE;
                     } else {
+                        ESP_LOGD(TAG, "[STATE] GAP -> ADVERTISING at %u us, retries=%u/%u",
+                                 micros(), cmd.retries, (unsigned) Command::MAX_RETRIES);
                         this->adv_state_ = AdvertiseState::ADVERTISING;
                         this->state_start_time_ = now;
                         this->start_advertising_(cmd.data);
@@ -137,6 +168,9 @@ std::vector<uint8_t> FastconController::get_white_light_data(light::LightState *
 // --- BLE Hardware Interface ---
 
 void FastconController::start_advertising_(const std::vector<uint8_t> &data) {
+    this->last_start_call_us_ = micros();
+    ESP_LOGD(TAG, "[CALL] start_advertising_() entry at %u us", this->last_start_call_us_);
+
     esp_ble_adv_params_t adv_params = {
         .adv_int_min = adv_interval_min_,
         .adv_int_max = adv_interval_max_,
@@ -160,12 +194,21 @@ void FastconController::start_advertising_(const std::vector<uint8_t> &data) {
     memcpy(&adv_data_raw[len], data.data(), data.size());
     len += data.size();
 
+    uint32_t before_config = micros();
     esp_ble_gap_config_adv_data_raw(adv_data_raw, len);
+    uint32_t before_start = micros();
     esp_ble_gap_start_advertising(&adv_params);
+    uint32_t after_start = micros();
+    ESP_LOGD(TAG, "[CALL] config_adv_data_raw() took %u us, start_advertising() took %u us (call itself, not the *_COMPLETE_EVT)",
+             before_start - before_config, after_start - before_start);
 }
 
 void FastconController::stop_advertising_() {
+    this->last_stop_call_us_ = micros();
+    ESP_LOGD(TAG, "[CALL] stop_advertising_() entry at %u us", this->last_stop_call_us_);
     esp_ble_gap_stop_advertising();
+    ESP_LOGD(TAG, "[CALL] stop_advertising() call itself took %u us (not the *_COMPLETE_EVT)",
+             micros() - this->last_stop_call_us_);
 }
 
 } // namespace fastcon
