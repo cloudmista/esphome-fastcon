@@ -10,29 +10,6 @@ static const char *const TAG = "fastcon.controller";
 
 void FastconController::setup() {
     ESP_LOGCONFIG(TAG, "Fastcon Controller: High-Frequency Burst Mode Active");
-    // DIAGNOSTIC: register via the shared dispatcher so esp32_ble_server's own
-    // GAP callback registration is untouched - see header comment.
-    esp32_ble::global_ble->register_gap_event_handler(this);
-}
-
-void FastconController::gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param) {
-    uint32_t now = micros();
-    switch (event) {
-        case ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT:
-            ESP_LOGD(TAG, "[GAP] ADV_DATA_RAW_SET_COMPLETE_EVT at %u us (%u us since start_advertising_ call)",
-                     now, now - this->last_start_call_us_);
-            break;
-        case ESP_GAP_BLE_ADV_START_COMPLETE_EVT:
-            ESP_LOGD(TAG, "[GAP] ADV_START_COMPLETE_EVT at %u us (%u us since start_advertising_ call)",
-                     now, now - this->last_start_call_us_);
-            break;
-        case ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT:
-            ESP_LOGD(TAG, "[GAP] ADV_STOP_COMPLETE_EVT at %u us (%u us since stop_advertising_ call)",
-                     now, now - this->last_stop_call_us_);
-            break;
-        default:
-            break;
-    }
 }
 
 // --- High Performance Queue Logic ---

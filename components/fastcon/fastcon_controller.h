@@ -12,26 +12,18 @@ namespace light { class LightState; }
 
 namespace fastcon {
 
-// DIAGNOSTIC BUILD: instrumented to localize a consistent 6-7s delay between
-// a light command being issued and it actually taking effect. Registers as a
-// esp32_ble::GAPEventHandler (via the shared global_ble dispatcher, NOT a
-// direct esp_ble_gap_register_callback() call, since that would silently
-// replace esp32_ble_server's own registration) to log the real-world gap
-// between issuing start_advertising_()/stop_advertising_() and the
-// corresponding *_COMPLETE_EVT actually arriving - neither of which this
-// controller previously waited for or even observed.
-class FastconController : public Component, public esp32_ble::GAPEventHandler {
+// DIAGNOSTIC BUILD: timestamp logging (see start_advertising_/stop_advertising_/
+// single_control) added to localize a consistent 6-7s delay between a light
+// command being issued and it actually taking effect. An earlier version of
+// this also hooked esp32_ble::GAPEventHandler to time the *_COMPLETE_EVT
+// callbacks directly, but that API doesn't exist in this form on newer
+// ESPHome/esp32_ble releases (gap_event_handler is now static/protected on
+// ESP32BLE itself) - removed rather than chase a moving target, since the
+// call-entry timestamps already answer the question we needed.
+class FastconController : public Component {
  public:
   void setup() override;
   void loop() override;
-  void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param) override;
-
-  // MUST run after esp32_ble::ESP32BLE::setup() (priority BLUETOOTH, 350.0f),
-  // since that's what assigns the global_ble pointer this component's setup()
-  // dereferences via register_gap_event_handler(). Component defaults to
-  // DATA (600.0f) - i.e. runs BEFORE BLUETOOTH - which crashed on every boot
-  // (null global_ble) until this override was added.
-  float get_setup_priority() const override { return esphome::setup_priority::AFTER_BLUETOOTH; }
 
   // YAML Setters (Fixes the main.cpp errors)
   void set_adv_interval(uint16_t val) { adv_interval_min_ = adv_interval_max_ = val; }
