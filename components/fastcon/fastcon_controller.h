@@ -53,7 +53,14 @@ class FastconController : public Component, public esp32_ble::GAPEventHandler {
   struct Command {
     std::vector<uint8_t> data;
     uint8_t retries{0};
-    static constexpr uint8_t MAX_RETRIES = 20; 
+    // Was 20 - measured at ~0.9-1.75s of real wall-clock time to exhaust per
+    // command (each retry cycle runs slower than the coded 45ms due to GAP
+    // event dispatch overhead). With no ACK in this protocol, retries past
+    // the first few buy little extra reliability while linearly multiplying
+    // per-command cost - and that cost multiplies again by queue depth
+    // (e.g. all 8 lights restoring state at once on reconnect took ~7.2s
+    // total to drain at 20 retries each). Dropped to 3.
+    static constexpr uint8_t MAX_RETRIES = 3;
   };
 
   std::queue<Command> queue_;
