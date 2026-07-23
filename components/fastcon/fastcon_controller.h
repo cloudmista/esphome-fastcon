@@ -26,6 +26,13 @@ class FastconController : public Component, public esp32_ble::GAPEventHandler {
   void loop() override;
   void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param) override;
 
+  // MUST run after esp32_ble::ESP32BLE::setup() (priority BLUETOOTH, 350.0f),
+  // since that's what assigns the global_ble pointer this component's setup()
+  // dereferences via register_gap_event_handler(). Component defaults to
+  // DATA (600.0f) - i.e. runs BEFORE BLUETOOTH - which crashed on every boot
+  // (null global_ble) until this override was added.
+  float get_setup_priority() const override { return esphome::setup_priority::AFTER_BLUETOOTH; }
+
   // YAML Setters (Fixes the main.cpp errors)
   void set_adv_interval(uint16_t val) { adv_interval_min_ = adv_interval_max_ = val; }
   void set_adv_interval_min(uint16_t val) { adv_interval_min_ = val; }
