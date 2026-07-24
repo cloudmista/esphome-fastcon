@@ -68,6 +68,14 @@ class FastconController : public Component {
   // (unsigned wraparound: 0 - (uint32_t)(-30000) == 30000).
   uint32_t last_coex_set_ms_{(uint32_t) (-30000)};
 
+  // DIAGNOSTIC: periodic FreeRTOS per-task CPU usage logging (see
+  // log_task_stats_() in .cpp) - investigating command delays that show
+  // zero network packet loss, to see if some task is monopolizing the CPU
+  // when a command is slow to be processed. Same immediate-first-fire
+  // wraparound trick as last_coex_set_ms_.
+  uint32_t last_taskstats_ms_{(uint32_t) (-3000)};
+  void log_task_stats_();
+
   void start_advertising_(const std::vector<uint8_t> &data);
   void stop_advertising_();
   std::vector<uint8_t> generate_command(uint8_t n, uint32_t light_id, const std::vector<uint8_t> &data, bool forward);

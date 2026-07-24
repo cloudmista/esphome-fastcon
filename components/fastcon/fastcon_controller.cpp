@@ -3,6 +3,9 @@
 #include "esphome/components/light/light_state.h"
 #include "protocol.h"
 #include "esp_coexist.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include <string>
 
 namespace esphome {
 namespace fastcon {
@@ -64,6 +67,19 @@ void FastconController::loop() {
         this->last_coex_set_ms_ = now_coex;
         esp_err_t err = esp_coex_preference_set(ESP_COEX_PREFER_WIFI);
         ESP_LOGW(TAG, "[COEX] esp_coex_preference_set(ESP_COEX_PREFER_WIFI) -> %d", (int) err);
+    }
+
+    // DIAGNOSTIC: command delays on an already-open connection show ZERO
+    // TCP packet loss (confirmed via tcpdump), so the delay must be inside
+    // the ESP's own processing - most likely some FreeRTOS task starving
+    // the CPU right when a command needs to be dispatched. Logs each
+    // task's CPU-time delta (microseconds) since the last sample, every
+    // 3s, so a monopolizing task shows up directly instead of being
+    // washed out by a lifetime-since-boot average.
+    uint32_t now_ts = millis();
+    if (now_ts - this->last_taskstats_ms_ >= 3000) {
+        this->last_taskstats_ms_ = now_ts;
+        this->log_task_stats_();
     }
 
     uint32_t now = millis();
@@ -210,6 +226,43 @@ void FastconController::stop_advertising_() {
     esp_ble_gap_stop_advertising();
     ESP_LOGD(TAG, "[CALL] stop_advertising() call itself took %u us (not the *_COMPLETE_EVT)",
              micros() - this->last_stop_call_us_);
+}
+
+// --- DIAGNOSTIC: FreeRTOS per-task CPU usage delta ---
+
+void FastconController::log_task_stats_() {
+    static constexpr UBaseType_t MAX_TASKS = 32;
+    static TaskStatus_t status[MAX_TASKS];
+    static TaskHandle_t prev_handle[MAX_TASKS] = {};
+    static uint32_t prev_runtime[MAX_TASKS] = {};
+    static UBaseType_t prev_count = 0;
+
+    uint32_t total_runtime = 0;
+    UBaseType_t count = uxTaskGetSystemState(status, MAX_TASKS, &total_runtime);
+
+    std::string out = "[TASKSTATS] CPU us consumed in last ~3s, per task:";
+    char entry[48];
+    for (UBaseType_t i = 0; i < count; i++) {
+        uint32_t cur = status[i].ulRunTimeCounter;
+        uint32_t delta = 0;
+        for (UBaseType_t j = 0; j < prev_count; j++) {
+            if (prev_handle[j] == status[i].xHandle) {
+                delta = cur - prev_runtime[j];
+                break;
+            }
+        }
+        if (delta > 0) {
+            snprintf(entry, sizeof(entry), " %s=%u", status[i].pcTaskName, (unsigned) delta);
+            out += entry;
+        }
+    }
+    ESP_LOGW(TAG, "%s", out.c_str());
+
+    for (UBaseType_t i = 0; i < count && i < MAX_TASKS; i++) {
+        prev_handle[i] = status[i].xHandle;
+        prev_runtime[i] = status[i].ulRunTimeCounter;
+    }
+    prev_count = count;
 }
 
 } // namespace fastcon
