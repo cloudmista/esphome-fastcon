@@ -15,9 +15,15 @@ static const char *const TAG = "fastcon.light";
 
 light::LightTraits FastconLight::get_traits() {
   light::LightTraits t;
-  
+
   // Define supported color modes based on hardware capabilities
-  if (this->color_interlock_) {
+  if (!this->supports_rgb_) {
+    // CCT-only hardware (white + warm-white LEDs, no RGB channel at all) -
+    // was previously always getting an RGB-inclusive mode regardless of
+    // supports_rgb, which told Home Assistant these lights could do full
+    // color when the physical bulbs can't. Declare only what's real.
+    t.set_supported_color_modes({light::ColorMode::COLD_WARM_WHITE});
+  } else if (this->color_interlock_) {
     if (this->supports_cwww_) {
       t.set_supported_color_modes({light::ColorMode::RGB, light::ColorMode::COLD_WARM_WHITE});
     } else {
@@ -35,7 +41,7 @@ light::LightTraits FastconLight::get_traits() {
     t.set_min_mireds(153.0f); // 6500K
     t.set_max_mireds(500.0f); // 2000K
   }
-  
+
   return t;
 }
 
@@ -49,15 +55,18 @@ void FastconLight::write_state(light::LightState *state) {
   auto &values = state->current_values;
 
   // 1. Determine if this is a white-only or color command
-  // We treat pure white or equal RGB values as a "white" command to trigger the dedicated white LEDs
-  float r = values.get_red();
-  float g = values.get_green();
-  float b = values.get_blue();
-  
-  bool is_white_only = false;
-  if (values.get_color_mode() == light::ColorMode::WHITE ||
-      (fabs(r - g) < 0.001f && fabs(g - b) < 0.001f)) {
-    is_white_only = true;
+  // CCT-only hardware never has a meaningful RGB value to check - always
+  // take the white/CW-WW path. Otherwise, treat pure white or equal RGB
+  // values as a "white" command to trigger the dedicated white LEDs.
+  bool is_white_only = !this->supports_rgb_;
+  if (this->supports_rgb_) {
+    float r = values.get_red();
+    float g = values.get_green();
+    float b = values.get_blue();
+    if (values.get_color_mode() == light::ColorMode::WHITE ||
+        (fabs(r - g) < 0.001f && fabs(g - b) < 0.001f)) {
+      is_white_only = true;
+    }
   }
 
   // 2. Fetch the appropriate raw data payload from the controller

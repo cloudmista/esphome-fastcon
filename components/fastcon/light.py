@@ -8,6 +8,10 @@ from .fastcon_controller import FastconController
 
 # New config key to toggle RGBCW capability per-entity
 CONF_SUPPORTS_CWWW = "supports_cwww"
+# Set false for CCT-only hardware (white + warm-white LEDs, no RGB channel
+# at all) - defaults true for backwards compatibility with existing
+# full-RGBCWWW fixtures using this fork.
+CONF_SUPPORTS_RGB = "supports_rgb"
 
 DEPENDENCIES = ["esp32_ble"]
 AUTO_LOAD = ["light"]
@@ -26,6 +30,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_CONTROLLER_ID, default="fastcon_controller"): cv.use_id(FastconController),
             cv.Optional(CONF_SUPPORTS_CWWW, default=False): cv.boolean,
             cv.Optional(CONF_COLOR_INTERLOCK, default=False): cv.boolean,
+            cv.Optional(CONF_SUPPORTS_RGB, default=True): cv.boolean,
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -45,3 +50,6 @@ async def to_code(config):
 
     if config.get(CONF_SUPPORTS_CWWW):
         cg.add(var.set_supports_cwww(True))
+
+    if not config.get(CONF_SUPPORTS_RGB, True):
+        cg.add(var.set_supports_rgb(False))

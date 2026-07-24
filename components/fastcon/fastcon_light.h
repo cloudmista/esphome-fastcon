@@ -18,6 +18,7 @@ class FastconLight : public Component, public light::LightOutput {
   void set_light_id(uint8_t id) { light_id_ = id; }
   void set_supports_cwww(bool v) { supports_cwww_ = v; }
   void set_color_interlock(bool v) { color_interlock_ = v; }
+  void set_supports_rgb(bool v) { supports_rgb_ = v; }
 
   // LightOutput interface
   light::LightTraits get_traits() override;
@@ -28,6 +29,11 @@ class FastconLight : public Component, public light::LightOutput {
   uint8_t light_id_{0};
   bool supports_cwww_{false};
   bool color_interlock_{false};
+  // Defaults true for backwards compatibility with existing full-RGBCWWW
+  // fixtures using this fork. Set false for CCT-only hardware (white +
+  // warm-white LEDs, no RGB channel at all) - forces the light to always
+  // use the white/CW-WW data path, never attempt an RGB command.
+  bool supports_rgb_{true};
 };
 
 }  // namespace fastcon
