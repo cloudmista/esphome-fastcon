@@ -63,10 +63,10 @@ class FastconController : public Component {
   AdvertiseState adv_state_{AdvertiseState::IDLE};
   uint32_t state_start_time_{0};
 
-  // Set once on the first loop() call (guaranteed to run after every
-  // component's setup() has completed, so WiFi + BT controller are both
-  // definitely initialized) - see coex_configured_ in .cpp.
-  bool coex_configured_{false};
+  // Re-applied every 30s from loop() (see .cpp) rather than once on boot -
+  // initialized so the very first check in loop() fires immediately
+  // (unsigned wraparound: 0 - (uint32_t)(-30000) == 30000).
+  uint32_t last_coex_set_ms_{(uint32_t) (-30000)};
 
   void start_advertising_(const std::vector<uint8_t> &data);
   void stop_advertising_();

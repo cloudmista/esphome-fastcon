@@ -43,18 +43,25 @@ void FastconController::queueCommand(uint32_t light_id, const std::vector<uint8_
 }
 
 void FastconController::loop() {
-    if (!this->coex_configured_) {
-        this->coex_configured_ = true;
-        // NEW investigation angle: WiFi and the BT controller share ONE
-        // physical 2.4GHz radio on the ESP32-S3, regardless of which CPU
-        // core their tasks run on (core-pinning didn't fix the delay -
-        // consistent with this being a radio-arbitration problem, not a
-        // CPU-scheduling one). By default ESP-IDF's coexistence scheduler
-        // uses ESP_COEX_PREFER_BALANCE, so an incoming WiFi/TCP packet
-        // (an HA command) can lose airtime arbitration to an in-flight
-        // BLE advertising burst or scan window. Biasing towards WiFi
-        // should let API traffic through promptly while fastcon's BLE
-        // bursts still get through, just without starving WiFi.
+    // NEW investigation angle: WiFi and the BT controller share ONE
+    // physical 2.4GHz radio on the ESP32-S3, regardless of which CPU
+    // core their tasks run on (core-pinning didn't fix the delay -
+    // consistent with this being a radio-arbitration problem, not a
+    // CPU-scheduling one). By default ESP-IDF's coexistence scheduler
+    // uses ESP_COEX_PREFER_BALANCE, so an incoming WiFi/TCP packet
+    // (an HA command) can lose airtime arbitration to an in-flight
+    // BLE advertising burst or scan window. Biasing towards WiFi
+    // should let API traffic through promptly while fastcon's BLE
+    // bursts still get through, just without starving WiFi.
+    //
+    // Re-applied/re-logged every 30s (not just once on boot) - the device's
+    // log ring buffer is only 768 bytes and the log-viewer connection can
+    // take 10+ seconds to establish, so a one-shot boot-time log line can
+    // easily be evicted before anyone's actually watching. Repeating it
+    // makes it impossible to miss, and re-calling the setter is harmless.
+    uint32_t now_coex = millis();
+    if (now_coex - this->last_coex_set_ms_ >= 30000) {
+        this->last_coex_set_ms_ = now_coex;
         esp_err_t err = esp_coex_preference_set(ESP_COEX_PREFER_WIFI);
         ESP_LOGW(TAG, "[COEX] esp_coex_preference_set(ESP_COEX_PREFER_WIFI) -> %d", (int) err);
     }
