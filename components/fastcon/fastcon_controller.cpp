@@ -2,6 +2,7 @@
 #include "esphome/core/log.h"
 #include "esphome/components/light/light_state.h"
 #include "protocol.h"
+#include "esp_coexist.h"
 
 namespace esphome {
 namespace fastcon {
@@ -42,6 +43,22 @@ void FastconController::queueCommand(uint32_t light_id, const std::vector<uint8_
 }
 
 void FastconController::loop() {
+    if (!this->coex_configured_) {
+        this->coex_configured_ = true;
+        // NEW investigation angle: WiFi and the BT controller share ONE
+        // physical 2.4GHz radio on the ESP32-S3, regardless of which CPU
+        // core their tasks run on (core-pinning didn't fix the delay -
+        // consistent with this being a radio-arbitration problem, not a
+        // CPU-scheduling one). By default ESP-IDF's coexistence scheduler
+        // uses ESP_COEX_PREFER_BALANCE, so an incoming WiFi/TCP packet
+        // (an HA command) can lose airtime arbitration to an in-flight
+        // BLE advertising burst or scan window. Biasing towards WiFi
+        // should let API traffic through promptly while fastcon's BLE
+        // bursts still get through, just without starving WiFi.
+        esp_err_t err = esp_coex_preference_set(ESP_COEX_PREFER_WIFI);
+        ESP_LOGW(TAG, "[COEX] esp_coex_preference_set(ESP_COEX_PREFER_WIFI) -> %d", (int) err);
+    }
+
     uint32_t now = millis();
 
     switch (this->adv_state_) {
