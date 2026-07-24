@@ -177,9 +177,16 @@ std::vector<uint8_t> FastconController::get_white_light_data(light::LightState *
     auto values = state->current_values;
     if (!values.is_on()) return {0x00};
 
+    // Was hardcoded to 127, 127 (always max cold+warm, ignoring the actual
+    // requested color temperature) - that's why only one fixed "white"
+    // ever showed up. Pull the real cw/ww split the same way get_light_data()
+    // does, so a warm-white request actually sends a warm-biased value
+    // instead of always maxing out both channels.
+    float r, g, b, cw, ww;
+    state->current_values_as_rgbww(&r, &g, &b, &cw, &ww, false);
+
     uint8_t brightness = static_cast<uint8_t>(values.get_brightness() * 127.0f);
-    // Force cold/warm white channels to max for "white mode"
-    return { static_cast<uint8_t>(0x80 | brightness), 0, 0, 0, 127, 127 };
+    return { static_cast<uint8_t>(0x80 | brightness), 0, 0, 0, to8(ww), to8(cw) };
 }
 
 // --- BLE Hardware Interface ---
