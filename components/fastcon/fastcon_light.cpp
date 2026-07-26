@@ -3,6 +3,7 @@
 #include "fastcon_controller.h"
 #include "fastcon_light.h"
 #include <cmath>
+#include <string>
 
 #ifndef FASTCON_VERSION
 #define FASTCON_VERSION "0.3.3-dev"
@@ -78,11 +79,28 @@ void FastconLight::write_state(light::LightState *state) {
     light_bytes = this->controller_->get_light_data(state);
   }
 
+  // DIAGNOSTIC: dump the actual pre-encryption payload bytes and the raw
+  // state ESPHome thinks it's applying - "everything at the logical/retry
+  // level looks identical between working and non-working cases" isn't
+  // enough to rule out a bug in what's actually computed. If a bug only
+  // shows up for certain callers (e.g. automations vs. manual UI calls),
+  // it has to be visible here.
+  {
+    std::string hex;
+    char buf[4];
+    for (uint8_t b : light_bytes) {
+      snprintf(buf, sizeof(buf), "%02X ", b);
+      hex += buf;
+    }
+    ESP_LOGD(TAG, "  raw payload: [ %s] is_on=%d brightness=%.3f", hex.c_str(),
+             (int) values.is_on(), values.get_brightness());
+  }
+
   // 3. Hand off the data to the controller's high-speed burst queue
   // This method wraps the bytes, encrypts them, and adds them to the 20x retransmit loop
   this->controller_->single_control(this->light_id_, light_bytes);
 
-  ESP_LOGD(TAG, "Queued burst command: light_id=%u, mode=%s", 
+  ESP_LOGD(TAG, "Queued burst command: light_id=%u, mode=%s",
            (unsigned)this->light_id_, is_white_only ? "WHITE" : "RGB");
 }
 
