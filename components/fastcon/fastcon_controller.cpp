@@ -178,15 +178,34 @@ std::vector<uint8_t> FastconController::get_white_light_data(light::LightState *
     if (!values.is_on()) return {0x00};
 
     // Was hardcoded to 127, 127 (always max cold+warm, ignoring the actual
-    // requested color temperature) - that's why only one fixed "white"
-    // ever showed up. Pull the real cw/ww split the same way get_light_data()
-    // does, so a warm-white request actually sends a warm-biased value
-    // instead of always maxing out both channels.
-    float r, g, b, cw, ww;
-    state->current_values_as_rgbww(&r, &g, &b, &cw, &ww, false);
+    // requested color temperature). Fixed once already to pull cw/ww via
+    // current_values_as_rgbww() - but that routes through ESPHome's own
+    // color-temperature-to-CWWW conversion (LightState::current_values_as_cwww),
+    // which multiplies the warmth ratio by brightness AND runs it through
+    // the light's gamma table internally. Measured on-device: the resulting
+    // byte tracked brightness^3, not brightness linearly - crushing anything
+    // under ~20% brightness to a rounded-to-zero byte, so a real "on, dim,
+    // warm white" request produced a technically-valid command with no
+    // color/warmth channel active at all (exactly the automation's use case
+    // - 1-10% brightness for a night-light effect).
+    //
+    // Fix: compute the warm/cold ratio ourselves, directly from the
+    // requested color temperature, completely independent of brightness.
+    // Our protocol already has its own dedicated linear brightness byte -
+    // brightness should be handled exactly once, not compounded into the
+    // warmth channels too.
+    auto traits = state->get_traits();
+    float min_mireds = traits.get_min_mireds();
+    float max_mireds = traits.get_max_mireds();
+    float ww_ratio = 1.0f;
+    if (max_mireds > min_mireds) {
+        ww_ratio = (values.get_color_temperature() - min_mireds) / (max_mireds - min_mireds);
+        ww_ratio = esphome::clamp(ww_ratio, 0.0f, 1.0f);
+    }
+    float cw_ratio = 1.0f - ww_ratio;
 
     uint8_t brightness = static_cast<uint8_t>(values.get_brightness() * 127.0f);
-    return { static_cast<uint8_t>(0x80 | brightness), 0, 0, 0, to8(ww), to8(cw) };
+    return { static_cast<uint8_t>(0x80 | brightness), 0, 0, 0, to8(ww_ratio), to8(cw_ratio) };
 }
 
 // --- BLE Hardware Interface ---
