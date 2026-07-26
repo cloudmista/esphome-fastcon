@@ -45,14 +45,23 @@ class FastconController : public Component {
   struct Command {
     std::vector<uint8_t> data;
     uint8_t retries{0};
+    // Was 20, then dropped to 3 for latency reasons (see below) - raised to
+    // 8 after sniffing the real BRmesh/Fastcon Android app's actual BLE
+    // traffic (on_ble_manufacturer_data_advertise diagnostic in
+    // fastcom-controller.yaml). The real app's burst for a single logical
+    // command spans noticeably longer than our 3-retry window did (~135-
+    // 165ms), implying more like 8-10 actual repeats - our 3-retry cut was
+    // likely trading away more reliability than the app itself sacrifices.
     // Was 20 - measured at ~0.9-1.75s of real wall-clock time to exhaust per
     // command (each retry cycle runs slower than the coded 45ms due to GAP
     // event dispatch overhead). With no ACK in this protocol, retries past
     // the first few buy little extra reliability while linearly multiplying
     // per-command cost - and that cost multiplies again by queue depth
     // (e.g. all 8 lights restoring state at once on reconnect took ~7.2s
-    // total to drain at 20 retries each). Dropped to 3.
-    static constexpr uint8_t MAX_RETRIES = 3;
+    // total to drain at 20 retries each). Now that the HA-side delay issue
+    // is separately fixed (AP pinning etc.), there's more room to raise
+    // this without reintroducing the original perceived-lag problem.
+    static constexpr uint8_t MAX_RETRIES = 8;
   };
 
   std::queue<Command> queue_;
