@@ -34,8 +34,15 @@ void FastconController::single_control(uint32_t light_id, const std::vector<uint
 void FastconController::queueCommand(uint32_t light_id, const std::vector<uint8_t> &data) {
     std::lock_guard<std::mutex> lock(queue_mutex_);
     
-    // Clear queue if it gets backed up to ensure the latest command is instant
-    if (this->queue_.size() > 10) {
+    // Was hardcoded to 10 regardless of the configured max_queue_size_ (100
+    // via fastcom-controller.yaml's max_queue_size: 100) - meaning the queue
+    // silently wiped itself completely the instant it backed up past just
+    // 10 pending commands, no matter what was configured. The stairs
+    // automation's burst of 24 commands (8 lamps x 3 automation-level
+    // triple-sends) easily crosses that, wiping out whatever was still
+    // queued for later lamps in one shot - explaining consecutive skips
+    // (e.g. lights 5, 6, 7 all missing at once) rather than random ones.
+    if (this->queue_.size() > this->max_queue_size_) {
         while(!this->queue_.empty()) this->queue_.pop();
     }
 
